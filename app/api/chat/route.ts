@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getSystemPrompt, generateConversationTitle, buildUserContext } from '@/lib/agent'
+import { searchDataGouv, searchServicePublic, needsExternalData, formatToolResults } from '@/lib/tools'
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
@@ -95,17 +96,35 @@ export async function POST(req: NextRequest) {
       existingMessages
     )
 
+    // 4. Recherche données externes si pertinent
+    let externalContext = ''
+    const needs = needsExternalData(message)
+    const externalResults = []
+
+    if (needs.dataGouv) {
+      const dgResults = await searchDataGouv(message)
+      externalResults.push(...dgResults)
+    }
+    if (needs.servicePublic) {
+      const spResults = await searchServicePublic(message)
+      externalResults.push(...spResults)
+    }
+    if (externalResults.length > 0) {
+      externalContext = formatToolResults(externalResults)
+    }
+
     const systemPrompt = getSystemPrompt(chatMode, userContext)
+    const systemWithTools = systemPrompt + (externalContext ? `\n\nSources officielles consultées pour cette question :${externalContext}\n\nUtilise ces informations pour enrichir ta réponse et cite les sources pertinentes.` : '')
 
     const groqMessages: Array<{ role: string; content: string }> = [
       ...existingMessages.map((m) => ({ role: m.role, content: m.content })),
       { role: 'user', content: message },
     ]
 
-    // 4. Appeler Groq
-    const assistantResponse = await callGroq(groqMessages, systemPrompt)
+    // 5. Appeler Groq
+    const assistantResponse = await callGroq(groqMessages, systemWithTools)
 
-    // 5. Sauvegarder en Supabase
+    // 6. Sauvegarder en Supabase
     await supabaseAdmin.from('messages').insert([
       { conversation_id: conversationId, role: 'user', content: message },
       { conversation_id: conversationId, role: 'assistant', content: assistantResponse },
@@ -116,7 +135,7 @@ export async function POST(req: NextRequest) {
       .update({ updated_at: new Date().toISOString() })
       .eq('id', conversationId)
 
-    // 6. Mise à jour contexte périodique
+    // 7. Mise à jour contexte périodique
     if (existingMessages.length > 0 && existingMessages.length % 10 === 0) {
       await updateUserContext(user_id, existingMessages, message, assistantResponse)
     }
