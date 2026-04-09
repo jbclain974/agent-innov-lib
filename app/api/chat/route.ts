@@ -114,7 +114,20 @@ export async function POST(req: NextRequest) {
     }
 
     const isReturningUser = existingMessages.length > 0
-    const systemPrompt = getSystemPrompt(chatMode, userContext, isReturningUser)
+    let systemPrompt = getSystemPrompt(chatMode, userContext, isReturningUser)
+
+    // Charger les documents de référence de l'utilisateur
+    const { data: docs } = await supabaseAdmin
+      .from('documents')
+      .select('name, content')
+      .eq('user_id', user_id)
+      .limit(5)
+
+    if (docs && docs.length > 0) {
+      const docsContext = docs.map(d => `📄 ${d.name}:\n${d.content.slice(0, 2000)}`).join('\n\n')
+      systemPrompt += `\n\n**Documents de référence disponibles :**\n${docsContext}`
+    }
+
     const systemWithTools = systemPrompt + (externalContext ? `\n\nSources officielles consultées pour cette question :${externalContext}\n\nUtilise ces informations pour enrichir ta réponse et cite les sources pertinentes.` : '')
 
     const groqMessages: Array<{ role: string; content: string }> = [

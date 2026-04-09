@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import dynamic from 'next/dynamic'
+
+const DocumentsModal = dynamic(() => import('./DocumentsModal'), { ssr: false })
 
 interface Message {
   id: string
@@ -31,6 +34,14 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
   const [isLoading, setIsLoading] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
   const [showSidebar, setShowSidebar] = useState(false)
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false)
+
+  // Voice states
+  const [isListening, setIsListening] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null)
+  const recognitionRef = useRef<any>(null)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -90,6 +101,88 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
     setActiveConversationId(null)
     setMessages([])
     setShowSidebar(false)
+  }
+
+  // ---- VOICE: Speech-to-Text ----
+  const startListening = () => {
+    if (typeof window === 'undefined') return
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      alert('La reconnaissance vocale n\'est pas supportée par votre navigateur.')
+      return
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop()
+      setIsListening(false)
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognitionRef.current = recognition
+    recognition.lang = 'fr-FR'
+    recognition.continuous = false
+    recognition.interimResults = false
+
+    recognition.onstart = () => setIsListening(true)
+    recognition.onend = () => setIsListening(false)
+    recognition.onerror = () => setIsListening(false)
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript
+      setInput(prev => prev + transcript)
+      setIsListening(false)
+    }
+
+    recognition.start()
+  }
+
+  // ---- VOICE: Text-to-Speech ----
+  const speakMessage = (text: string, messageId: string) => {
+    if (typeof window === 'undefined') return
+
+    if (isSpeaking && speakingMessageId === messageId) {
+      speechSynthesis.cancel()
+      setIsSpeaking(false)
+      setSpeakingMessageId(null)
+      return
+    }
+
+    speechSynthesis.cancel()
+
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'fr-FR'
+    utterance.rate = 1.0
+    utterance.pitch = 1.0
+
+    // Chercher une voix française
+    const loadVoice = () => {
+      const voices = speechSynthesis.getVoices()
+      const frVoice = voices.find(v => v.lang.startsWith('fr'))
+      if (frVoice) utterance.voice = frVoice
+    }
+
+    loadVoice()
+    // Fallback si les voix ne sont pas encore chargées
+    if (speechSynthesis.getVoices().length === 0) {
+      speechSynthesis.addEventListener('voiceschanged', loadVoice, { once: true })
+    }
+
+    utterance.onstart = () => {
+      setIsSpeaking(true)
+      setSpeakingMessageId(messageId)
+    }
+    utterance.onend = () => {
+      setIsSpeaking(false)
+      setSpeakingMessageId(null)
+    }
+    utterance.onerror = () => {
+      setIsSpeaking(false)
+      setSpeakingMessageId(null)
+    }
+
+    speechSynthesis.speak(utterance)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -316,6 +409,18 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
             </div>
           </div>
 
+          {/* Bouton Documents (admin seulement) */}
+          {mode === 'admin' && (
+            <button
+              onClick={() => setShowDocumentsModal(true)}
+              title="Gérer les documents de référence"
+              className="flex items-center gap-1.5 px-3 py-2 text-gray-600 hover:text-innov-600 hover:bg-innov-50 rounded-xl transition-colors text-sm"
+            >
+              <span className="text-base">📎</span>
+              <span className="hidden sm:inline text-xs font-medium">Documents</span>
+            </button>
+          )}
+
           {mode === 'admin' && (
             <span className="bg-amber-100 text-amber-700 text-xs font-medium px-3 py-1 rounded-full">
               ⚙️ Admin
@@ -360,7 +465,7 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
             </div>
           )}
 
-          {messages.map((message, index) => (
+          {messages.map((message) => (
             <div
               key={message.id}
               className={`flex gap-3 message-enter ${
@@ -383,15 +488,31 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
                 }`}
               >
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
-                {message.created_at && (
-                  <p
-                    className={`text-xs mt-1 ${
-                      message.role === 'user' ? 'text-innov-200' : 'text-gray-400'
-                    }`}
-                  >
-                    {formatTime(message.created_at)}
-                  </p>
-                )}
+                <div className={`flex items-center gap-2 mt-1 ${message.role === 'user' ? 'justify-end' : 'justify-between'}`}>
+                  {message.created_at && (
+                    <p
+                      className={`text-xs ${
+                        message.role === 'user' ? 'text-innov-200' : 'text-gray-400'
+                      }`}
+                    >
+                      {formatTime(message.created_at)}
+                    </p>
+                  )}
+                  {/* Bouton TTS sur les messages assistant */}
+                  {message.role === 'assistant' && (
+                    <button
+                      onClick={() => speakMessage(message.content, message.id)}
+                      title={isSpeaking && speakingMessageId === message.id ? 'Arrêter la lecture' : 'Lire à voix haute'}
+                      className={`text-xs transition-all ${
+                        isSpeaking && speakingMessageId === message.id
+                          ? 'text-innov-500 animate-pulse'
+                          : 'text-gray-300 hover:text-innov-400'
+                      }`}
+                    >
+                      🔊
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -417,7 +538,7 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
 
         {/* Input */}
         <div className="bg-white border-t border-innov-100 p-4">
-          <form onSubmit={handleSubmit} className="flex gap-3 items-end">
+          <form onSubmit={handleSubmit} className="flex gap-2 items-end">
             <div className="flex-1 relative">
               <textarea
                 ref={textareaRef}
@@ -425,7 +546,9 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  mode === 'admin'
+                  isListening
+                    ? '🎤 À l\'écoute...'
+                    : mode === 'admin'
                     ? 'Écrivez votre demande professionnelle...'
                     : 'Écrivez votre message... (je vous réponds avec bienveillance)'
                 }
@@ -435,6 +558,22 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
                 style={{ minHeight: '48px' }}
               />
             </div>
+
+            {/* Bouton microphone */}
+            <button
+              type="button"
+              onClick={startListening}
+              title={isListening ? 'Arrêter la dictée' : 'Dicter un message'}
+              className={`flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                isListening
+                  ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-200'
+                  : 'bg-gray-100 text-gray-500 hover:bg-innov-100 hover:text-innov-600'
+              }`}
+            >
+              🎤
+            </button>
+
+            {/* Bouton envoyer */}
             <button
               type="submit"
               disabled={!input.trim() || isLoading}
@@ -453,10 +592,18 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
             </button>
           </form>
           <p className="text-center text-xs text-gray-400 mt-2">
-            Entrée pour envoyer · Maj+Entrée pour une nouvelle ligne
+            Entrée pour envoyer · Maj+Entrée pour une nouvelle ligne · 🎤 pour dicter
           </p>
         </div>
       </div>
+
+      {/* Modal Documents */}
+      {showDocumentsModal && (
+        <DocumentsModal
+          userId={userId}
+          onClose={() => setShowDocumentsModal(false)}
+        />
+      )}
     </div>
   )
 }
