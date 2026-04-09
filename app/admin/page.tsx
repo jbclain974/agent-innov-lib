@@ -14,8 +14,8 @@ export default function AdminPage() {
   const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
-    // Vérifier session admin existante
-    const session = sessionStorage.getItem('innov_admin_session')
+    // Vérifier session admin persistante (localStorage)
+    const session = localStorage.getItem('innov_admin_session')
     if (session === 'authenticated') {
       setIsAuthenticated(true)
     }
@@ -35,7 +35,7 @@ export default function AdminPage() {
       })
 
       if (res.ok) {
-        sessionStorage.setItem('innov_admin_session', 'authenticated')
+        localStorage.setItem('innov_admin_session', 'authenticated')
         setIsAuthenticated(true)
       } else {
         setError('Mot de passe incorrect. Veuillez réessayer.')
