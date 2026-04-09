@@ -44,23 +44,28 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
 
   const loadConversations = useCallback(async () => {
     try {
-      const res = await fetch(`/api/conversations?user_id=${userId}&mode=${mode}`)
+      const res = await fetch(`/api/conversations?user_id=${userId}&mode=all`)
       if (res.ok) {
         const data = await res.json()
-        setConversations(data.conversations || [])
+        const convs = data.conversations || []
+        setConversations(convs)
+        // Restaurer la dernière conversation active
+        const lastConvId = localStorage.getItem(`innov_last_conv_${userId}`)
+        if (lastConvId && convs.find((c: Conversation) => c.id === lastConvId)) {
+          await loadConversationById(lastConvId)
+        } else if (convs.length > 0 && !activeConversationId) {
+          await loadConversationById(convs[0].id)
+        }
       }
     } catch (error) {
       console.error('Erreur chargement conversations:', error)
     }
-  }, [userId, mode])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
 
-  useEffect(() => {
-    loadConversations()
-  }, [loadConversations])
-
-  const loadConversation = async (conversationId: string) => {
+  const loadConversationById = async (conversationId: string) => {
     setActiveConversationId(conversationId)
-    setShowSidebar(false)
+    localStorage.setItem(`innov_last_conv_${userId}`, conversationId)
     try {
       const res = await fetch(`/api/conversations?conversation_id=${conversationId}`)
       if (res.ok) {
@@ -70,6 +75,15 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
     } catch (error) {
       console.error('Erreur chargement messages:', error)
     }
+  }
+
+  useEffect(() => {
+    loadConversations()
+  }, [loadConversations])
+
+  const loadConversation = async (conversationId: string) => {
+    setShowSidebar(false)
+    await loadConversationById(conversationId)
   }
 
   const startNewConversation = () => {
@@ -130,6 +144,7 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
 
       if (!activeConversationId && data.conversation_id) {
         setActiveConversationId(data.conversation_id)
+        localStorage.setItem(`innov_last_conv_${userId}`, data.conversation_id)
         loadConversations()
       }
     } catch (error) {

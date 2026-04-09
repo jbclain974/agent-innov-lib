@@ -5,7 +5,7 @@
 export const AGENT_NAME = 'Iris'
 export const AGENT_VERSION = '1.0.0'
 
-export function getSystemPrompt(mode: 'admin' | 'client', userContext?: string | null): string {
+export function getSystemPrompt(mode: 'admin' | 'client', userContext?: string | null, isReturningUser?: boolean): string {
   const basePrompt = `Tu es Iris 🌿, l'assistante IA personnelle d'INNOV LIB, créée par Dominique COMMARMOND.
 
 INNOV LIB est une structure d'accompagnement basée à Saint-Benoît, La Réunion, spécialisée dans :
@@ -65,10 +65,14 @@ Tu ne poses pas de diagnostic. Tu guides, tu informes, tu orientes vers les prof
     ? `\n**Contexte de l'utilisateur (mémoire persistante) :**\n${userContext}\nUtilise ce contexte pour personnaliser tes réponses.`
     : ''
 
+  const continuityNote = isReturningUser
+    ? `\n**IMPORTANT :** Cette conversation est déjà en cours. Ne dis PAS bonjour, ne te présente pas à nouveau. Continue naturellement comme si la conversation n'avait jamais été interrompue.`
+    : ''
+
   if (mode === 'admin') {
-    return basePrompt + adminPrompt + memoryContext
+    return basePrompt + adminPrompt + memoryContext + continuityNote
   } else {
-    return basePrompt + clientPrompt + memoryContext
+    return basePrompt + clientPrompt + memoryContext + continuityNote
   }
 }
 

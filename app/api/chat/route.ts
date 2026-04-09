@@ -113,7 +113,8 @@ export async function POST(req: NextRequest) {
       externalContext = formatToolResults(externalResults)
     }
 
-    const systemPrompt = getSystemPrompt(chatMode, userContext)
+    const isReturningUser = existingMessages.length > 0
+    const systemPrompt = getSystemPrompt(chatMode, userContext, isReturningUser)
     const systemWithTools = systemPrompt + (externalContext ? `\n\nSources officielles consultées pour cette question :${externalContext}\n\nUtilise ces informations pour enrichir ta réponse et cite les sources pertinentes.` : '')
 
     const groqMessages: Array<{ role: string; content: string }> = [
