@@ -35,6 +35,44 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
   const [isTyping, setIsTyping] = useState(false)
   const [showSidebar, setShowSidebar] = useState(false)
   const [showDocumentsModal, setShowDocumentsModal] = useState(false)
+  const [renamingConvId, setRenamingConvId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  const renameConversation = async (convId: string, newTitle: string) => {
+    if (!newTitle.trim()) return
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversation_id: convId, title: newTitle.trim() }),
+      })
+      if (res.ok) {
+        setConversations(prev => prev.map(c => c.id === convId ? { ...c, title: newTitle.trim() } : c))
+      }
+    } catch (error) {
+      console.error('Erreur renommage:', error)
+    } finally {
+      setRenamingConvId(null)
+      setRenameValue('')
+    }
+  }
+
+  const deleteConversation = async (convId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('Supprimer cette conversation ?')) return
+    try {
+      const res = await fetch(`/api/conversations?conversation_id=${convId}`, { method: 'DELETE' })
+      if (res.ok) {
+        setConversations(prev => prev.filter(c => c.id !== convId))
+        if (activeConversationId === convId) {
+          setActiveConversationId(null)
+          setMessages([])
+        }
+      }
+    } catch (error) {
+      console.error('Erreur suppression:', error)
+    }
+  }
 
   // Voice states
   const [isListening, setIsListening] = useState(false)
@@ -55,7 +93,7 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
 
   const loadConversations = useCallback(async () => {
     try {
-      const res = await fetch(`/api/conversations?user_id=${userId}&mode=all`)
+      const res = await fetch(`/api/conversations?user_id=${userId}`)
       if (res.ok) {
         const data = await res.json()
         const convs = data.conversations || []
@@ -339,22 +377,60 @@ export default function ChatInterface({ mode, userId, userName }: ChatInterfaceP
             </p>
           ) : (
             conversations.map((conv) => (
-              <button
+              <div
                 key={conv.id}
-                onClick={() => loadConversation(conv.id)}
-                className={`w-full text-left px-3 py-3 rounded-xl text-sm transition-colors ${
+                className={`group relative flex items-center rounded-xl text-sm transition-colors ${
                   activeConversationId === conv.id
                     ? 'bg-innov-100 text-innov-800'
                     : 'hover:bg-gray-100 text-gray-700'
                 }`}
               >
-                <p className="font-medium truncate">
-                  {conv.title || 'Nouvelle conversation'}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {formatDate(conv.updated_at)}
-                </p>
-              </button>
+                {renamingConvId === conv.id ? (
+                  <form
+                    className="flex-1 flex items-center gap-1 px-2 py-2"
+                    onSubmit={(e) => { e.preventDefault(); renameConversation(conv.id, renameValue) }}
+                  >
+                    <input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={() => renameConversation(conv.id, renameValue || conv.title || 'Nouvelle conversation')}
+                      onKeyDown={(e) => { if (e.key === 'Escape') { setRenamingConvId(null); setRenameValue('') } }}
+                      className="flex-1 text-sm border border-innov-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-innov-400 bg-white"
+                    />
+                  </form>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => loadConversation(conv.id)}
+                      className="flex-1 text-left px-3 py-3 min-w-0"
+                    >
+                      <p className="font-medium truncate">
+                        {conv.title || 'Nouvelle conversation'}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {formatDate(conv.updated_at)}
+                      </p>
+                    </button>
+                    <div className="flex items-center gap-0.5 pr-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        title="Renommer"
+                        onClick={(e) => { e.stopPropagation(); setRenamingConvId(conv.id); setRenameValue(conv.title || '') }}
+                        className="p-1 rounded hover:bg-innov-200 text-gray-400 hover:text-innov-700 text-xs"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        title="Supprimer"
+                        onClick={(e) => deleteConversation(conv.id, e)}
+                        className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 text-xs"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             ))
           )}
         </div>

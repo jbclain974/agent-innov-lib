@@ -7,6 +7,7 @@ interface Document {
   name: string
   file_type: string
   created_at: string
+  _previewUrl?: string
 }
 
 interface DocumentsModalProps {
@@ -42,6 +43,8 @@ export default function DocumentsModal({ userId, onClose }: DocumentsModalProps)
     loadDocuments()
   }, [loadDocuments])
 
+  const isImageType = (mimeType: string) => mimeType.startsWith('image/')
+
   const uploadFile = async (file: File) => {
     setUploadError(null)
     setUploadSuccess(null)
@@ -63,6 +66,10 @@ export default function DocumentsModal({ userId, onClose }: DocumentsModalProps)
         setUploadError(data.error || 'Erreur lors de l\'upload')
       } else {
         setUploadSuccess(`✅ "${file.name}" uploadé avec succès !`)
+        // Add preview URL for images
+        if (data.document && isImageType(file.type)) {
+          data.document._previewUrl = URL.createObjectURL(file)
+        }
         await loadDocuments()
       }
     } catch (error) {
@@ -119,10 +126,14 @@ export default function DocumentsModal({ userId, onClose }: DocumentsModalProps)
   }
 
   const getFileIcon = (fileType: string) => {
+    if (fileType.startsWith('image/')) return '🖼️'
     switch (fileType) {
-      case 'pdf': return '📄'
-      case 'docx': return '📝'
-      case 'txt': return '📃'
+      case 'pdf':
+      case 'application/pdf': return '📄'
+      case 'docx':
+      case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': return '📝'
+      case 'txt':
+      case 'text/plain': return '📃'
       default: return '📎'
     }
   }
@@ -160,7 +171,7 @@ export default function DocumentsModal({ userId, onClose }: DocumentsModalProps)
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,.txt"
+              accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif"
               onChange={handleFileSelect}
               className="hidden"
             />
@@ -175,7 +186,7 @@ export default function DocumentsModal({ userId, onClose }: DocumentsModalProps)
                 <p className="text-sm font-medium text-gray-700">
                   Glissez un fichier ici ou cliquez pour sélectionner
                 </p>
-                <p className="text-xs text-gray-400">PDF, DOCX, TXT — max 10 MB</p>
+                <p className="text-xs text-gray-400">PDF, DOCX, TXT, Images (JPEG, PNG, WebP, GIF) — max 10 MB</p>
               </div>
             )}
           </div>
@@ -213,7 +224,15 @@ export default function DocumentsModal({ userId, onClose }: DocumentsModalProps)
                   key={doc.id}
                   className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl border border-gray-100"
                 >
-                  <span className="text-xl flex-shrink-0">{getFileIcon(doc.file_type)}</span>
+                  {doc._previewUrl ? (
+                    <img
+                      src={doc._previewUrl}
+                      alt={doc.name}
+                      className="w-10 h-10 object-cover rounded-lg flex-shrink-0 border border-gray-200"
+                    />
+                  ) : (
+                    <span className="text-xl flex-shrink-0">{getFileIcon(doc.file_type)}</span>
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800 truncate">{doc.name}</p>
                     <p className="text-xs text-gray-400">{formatDate(doc.created_at)} · {doc.file_type?.toUpperCase()}</p>
