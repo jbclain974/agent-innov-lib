@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   description:
     'INNOV LIB vous accompagne dans votre parcours de libération des addictions et de réinsertion sociale. Basé à Saint-Benoît, La Réunion.',
   keywords: 'addiction, réinsertion, accompagnement, La Réunion, Saint-Benoît, aide sociale',
+  icons: { icon: "/icon.svg" },
   openGraph: {
     title: 'INNOV LIB — Accompagnement & Réinsertion',
     description: 'Accompagnement bienveillant pour les personnes touchées par les addictions',
